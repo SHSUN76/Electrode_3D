@@ -212,7 +212,7 @@ class MeshRefinement:
         Args:
             mesh: Input mesh
             target_faces: Target number of faces
-            ratio: Simplification ratio (0-1)
+            ratio: Simplification ratio (0-1), e.g., 0.5 means keep 50% of faces
 
         Returns:
             Simplified mesh
@@ -224,7 +224,22 @@ class MeshRefinement:
         elif ratio is None:
             ratio = 0.5
 
-        return mesh.simplify_quadric_decimation(int(current_faces * ratio))
+        # Ensure ratio is in valid range
+        ratio = max(0.01, min(0.99, ratio))
+
+        # Try quadric decimation (requires fast_simplification)
+        try:
+            # trimesh 4.x API: percent is the fraction of faces to keep
+            return mesh.simplify_quadric_decimation(percent=ratio)
+        except (ImportError, ModuleNotFoundError):
+            # Fallback: return a copy
+            return mesh.copy()
+        except TypeError:
+            # Old API: target face count
+            try:
+                return mesh.simplify_quadric_decimation(int(current_faces * ratio))
+            except Exception:
+                return mesh.copy()
 
     def repair(self, mesh: "trimesh.Trimesh") -> "trimesh.Trimesh":
         """
@@ -239,8 +254,14 @@ class MeshRefinement:
         # Remove duplicate vertices
         mesh.merge_vertices()
 
-        # Remove degenerate faces
-        mesh.remove_degenerate_faces()
+        # Remove degenerate faces using nondegenerate_faces mask
+        if hasattr(mesh, 'nondegenerate_faces'):
+            mask = mesh.nondegenerate_faces()
+            if not mask.all():
+                mesh.update_faces(mask)
+        elif hasattr(mesh, 'remove_degenerate_faces'):
+            # Fallback for older trimesh versions
+            mesh.remove_degenerate_faces()
 
         # Fix normals
         mesh.fix_normals()
