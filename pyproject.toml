@@ -1,0 +1,96 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "electrode-3d-generator"
+version = "0.1.0"
+description = "3D Electrode Structure Auto-Generator for Battery Simulation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "SHSUN76", email = "shsun76@example.com"}
+]
+keywords = ["battery", "electrode", "3D", "GAN", "SliceGAN", "COMSOL", "simulation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "scikit-image>=0.20.0",
+    "pillow>=9.0.0",
+    "tifffile>=2023.0.0",
+    "trimesh>=3.21.0",
+    "pyvista>=0.39.0",
+    "gmsh>=4.11.0",
+    "matplotlib>=3.7.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.65.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+comsol = [
+    "mph>=1.2.0",
+]
+blender = [
+    "bpy>=4.0.0",
+]
+jupyter = [
+    "jupyter>=1.0.0",
+    "jupyterlab>=4.0.0",
+    "ipywidgets>=8.0.0",
+]
+
+[project.scripts]
+electrode-gen = "electrode_generator.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/SHSUN76/Electrode_3D"
+Repository = "https://github.com/SHSUN76/Electrode_3D"
+Documentation = "https://github.com/SHSUN76/Electrode_3D#readme"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["electrode_generator*", "models*", "preprocessing*", "postprocessing*", "utils*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --cov=electrode_generator --cov-report=term-missing"

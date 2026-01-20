@@ -1,0 +1,42 @@
+# Electrode 3D Generator - High Quality Training Configuration
+# ===========================================================
+# For production-quality results
+
+slicegan:
+  nz: 128
+  ngf: 128
+  ndf: 128
+  nc: 3
+  image_size: 64
+  batch_size: 4
+  lr_g: 0.00005
+  lr_d: 0.0002
+  lambda_gp: 10.0
+  n_critic: 5
+  epochs: 500
+  device: "cuda"
+
+preprocessing:
+  target_size: [512, 512]
+  num_classes: 3
+  denoise: true
+  denoise_sigma: 1.5
+  normalize: true
+  augment: true
+  flip_horizontal: true
+  flip_vertical: true
+  rotation_range: 30.0
+
+postprocessing:
+  voxel_size: 0.5
+  level: 0.5
+  step_size: 1
+  export_formats:
+    - stl
+    - obj
+    - vtk
+  smooth_iterations: 5
+  smooth_factor: 0.5
+
+logging:
+  level: "INFO"

@@ -1,0 +1,37 @@
+# Electrode 3D Generator - Fast Training Configuration
+# ====================================================
+# For quick experiments and testing
+
+slicegan:
+  nz: 32
+  ngf: 32
+  ndf: 32
+  nc: 3
+  image_size: 64
+  batch_size: 16
+  lr_g: 0.0002
+  lr_d: 0.0004
+  lambda_gp: 10.0
+  n_critic: 3
+  epochs: 20
+  device: "cuda"
+
+preprocessing:
+  target_size: [128, 128]
+  num_classes: 3
+  denoise: true
+  denoise_sigma: 0.5
+  normalize: true
+  augment: false
+
+postprocessing:
+  voxel_size: 1.0
+  level: 0.5
+  step_size: 2
+  export_formats:
+    - stl
+  smooth_iterations: 1
+  smooth_factor: 0.3
+
+logging:
+  level: "DEBUG"

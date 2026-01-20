@@ -1,0 +1,124 @@
+# Electrode 3D Generator - Default Configuration
+# ==============================================
+
+# SliceGAN Model Configuration
+slicegan:
+  # Latent vector dimension
+  nz: 64
+
+  # Generator filter count (base)
+  ngf: 64
+
+  # Discriminator filter count (base)
+  ndf: 64
+
+  # Number of output channels (phases)
+  nc: 3
+
+  # Output volume size
+  image_size: 64
+
+  # Training batch size
+  batch_size: 8
+
+  # Generator learning rate
+  lr_g: 0.0001
+
+  # Discriminator learning rate
+  lr_d: 0.0004
+
+  # Gradient penalty weight (WGAN-GP)
+  lambda_gp: 10.0
+
+  # Critic updates per generator update
+  n_critic: 5
+
+  # Number of training epochs
+  epochs: 100
+
+  # Device (cuda/cpu)
+  device: "cuda"
+
+# Preprocessing Configuration
+preprocessing:
+  # Target image size after resize
+  target_size: [256, 256]
+
+  # Number of phases to segment
+  num_classes: 3
+
+  # Enable denoising
+  denoise: true
+
+  # Gaussian denoise sigma
+  denoise_sigma: 1.0
+
+  # Enable normalization
+  normalize: true
+
+  # Data augmentation
+  augment: true
+  flip_horizontal: true
+  flip_vertical: true
+  rotation_range: 15.0
+
+# Postprocessing Configuration
+postprocessing:
+  # Voxel physical size (micrometers)
+  voxel_size: 1.0
+
+  # Marching cubes iso-level
+  level: 0.5
+
+  # Marching cubes step size
+  step_size: 1
+
+  # Export formats
+  export_formats:
+    - stl
+    - obj
+
+  # Mesh smoothing iterations
+  smooth_iterations: 3
+
+  # Laplacian smoothing factor
+  smooth_factor: 0.5
+
+# COMSOL Configuration (Optional)
+comsol:
+  # COMSOL installation path (null = auto-detect)
+  comsol_path: null
+
+  # Number of CPU cores for COMSOL
+  num_cores: 4
+
+  # Simulation timeout (seconds)
+  timeout: 3600
+
+# Paths Configuration
+paths:
+  # Raw data directory
+  raw_data: "data/raw"
+
+  # Processed data directory
+  processed_data: "data/processed"
+
+  # Generated data directory
+  generated_data: "data/generated"
+
+  # Model checkpoints directory
+  checkpoints: "models/checkpoints"
+
+  # Experiment results directory
+  experiments: "experiments"
+
+# Logging Configuration
+logging:
+  # Log level (DEBUG, INFO, WARNING, ERROR)
+  level: "INFO"
+
+  # Log to file
+  file: "logs/electrode_gen.log"
+
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
