@@ -290,3 +290,202 @@ class TestMeshExporter:
             assert "mesh2" in results
             assert len(results["mesh1"]) == 2
             assert len(results["mesh2"]) == 2
+
+    def test_export_nastran(self, exporter):
+        """Test NASTRAN format export."""
+        vertices = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0],
+            [0.5, 0.5, 1.0],
+        ], dtype=np.float64)
+        faces = np.array([
+            [0, 1, 2],
+            [0, 1, 3],
+            [1, 2, 3],
+            [0, 2, 3],
+        ], dtype=np.int32)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.nas"
+            result = exporter.export_nastran(vertices, faces, path, title="Test Mesh")
+
+            assert result.exists()
+            assert result.suffix == ".nas"
+
+            content = result.read_text()
+            assert "BEGIN BULK" in content
+            assert "GRID*" in content
+            assert "CTRIA3" in content
+            assert "ENDDATA" in content
+
+    def test_export_gmsh(self, exporter):
+        """Test Gmsh MSH format export."""
+        vertices = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0],
+        ], dtype=np.float64)
+        faces = np.array([[0, 1, 2]], dtype=np.int32)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.msh"
+            result = exporter.export_gmsh(vertices, faces, path)
+
+            assert result.exists()
+            assert result.suffix == ".msh"
+
+            content = result.read_text()
+            assert "$MeshFormat" in content
+            assert "$Nodes" in content
+            assert "$Elements" in content
+
+    def test_export_for_comsol_nastran(self, exporter, sample_mesh):
+        """Test COMSOL export with NASTRAN format."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "comsol_test.nas"
+            result = exporter.export_for_comsol(
+                sample_mesh,
+                path,
+                scale=0.001,  # mm to m
+                format="nastran"
+            )
+
+            assert result.exists()
+            assert result.suffix == ".nas"
+
+
+class TestBlenderIntegration:
+    """Tests for Blender MCP integration."""
+
+    @pytest.fixture
+    def refiner(self):
+        """Create BlenderMeshRefiner instance."""
+        from postprocessing.blender_integration import BlenderMeshRefiner
+        return BlenderMeshRefiner(voxel_size=2.0, smooth_iterations=3)
+
+    def test_get_import_code(self, refiner):
+        """Test generating Blender import code."""
+        code = refiner.get_import_code("test.stl", name="electrode")
+
+        assert "import bpy" in code
+        assert "stl_import" in code
+        assert "electrode" in code
+
+    def test_get_analyze_code(self, refiner):
+        """Test generating Blender analysis code."""
+        code = refiner.get_analyze_code("electrode")
+
+        assert "import bpy" in code
+        assert "import bmesh" in code
+        assert "non_manifold" in code
+        assert "MESH_QUALITY_RESULT" in code
+
+    def test_get_remesh_code(self, refiner):
+        """Test generating Blender remesh code."""
+        code = refiner.get_remesh_code("electrode", voxel_size=1.5, smooth=True)
+
+        assert "REMESH" in code
+        assert "VOXEL" in code
+        assert "1.5" in code
+        assert "LAPLACIANSMOOTH" in code
+
+    def test_get_export_code(self, refiner):
+        """Test generating Blender export code."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "output.stl"
+            code = refiner.get_export_code(output, object_name="electrode", format="stl")
+
+            assert "stl_export" in code
+            assert "electrode" in code
+
+    def test_get_full_refinement_code(self, refiner):
+        """Test generating complete refinement pipeline code."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "input.stl"
+            output_path = Path(tmpdir) / "output.stl"
+
+            code = refiner.get_full_refinement_code(
+                input_path=input_path,
+                output_path=output_path,
+                voxel_size=2.0,
+                smooth=True,
+                scale_for_comsol=True,
+            )
+
+            assert "FULL MESH REFINEMENT PIPELINE" in code
+            assert "stl_import" in code
+            assert "REMESH" in code
+            assert "LAPLACIANSMOOTH" in code
+            assert "stl_export" in code
+            assert "0.001" in code  # Scale factor
+
+
+@pytest.mark.skipif(not TRIMESH_AVAILABLE, reason="trimesh not installed")
+class TestMeshQualityAnalysis:
+    """Tests for mesh quality analysis."""
+
+    def test_analyze_mesh_with_trimesh(self):
+        """Test mesh analysis with trimesh fallback."""
+        from postprocessing.blender_integration import analyze_mesh_with_trimesh
+
+        # Create a simple watertight mesh
+        mesh = trimesh.creation.box(extents=[1, 1, 1])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mesh_path = Path(tmpdir) / "test.stl"
+            mesh.export(str(mesh_path))
+
+            report = analyze_mesh_with_trimesh(mesh_path)
+
+            assert report.is_watertight
+            assert report.vertex_count > 0
+            assert report.face_count > 0
+            assert report.surface_area > 0
+
+    def test_mesh_quality_report_properties(self):
+        """Test MeshQualityReport properties."""
+        from postprocessing.blender_integration import MeshQualityReport
+
+        report = MeshQualityReport(
+            is_manifold=True,
+            is_watertight=True,
+            non_manifold_edges=0,
+            non_manifold_verts=0,
+            degenerate_faces=0,
+            isolated_verts=0,
+            volume=1.0,
+            surface_area=6.0,
+            bounding_box=[[0, 0, 0], [1, 1, 1]],
+            vertex_count=8,
+            face_count=12,
+        )
+
+        assert report.is_simulation_ready
+        assert report.to_dict()["is_simulation_ready"]
+
+    def test_refine_mesh_with_trimesh(self):
+        """Test mesh refinement with trimesh fallback."""
+        from postprocessing.blender_integration import refine_mesh_with_trimesh
+
+        # Create mesh
+        mesh = trimesh.creation.icosphere(subdivisions=3)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "input.stl"
+            output_path = Path(tmpdir) / "output.stl"
+
+            mesh.export(str(input_path))
+
+            result = refine_mesh_with_trimesh(
+                input_path,
+                output_path,
+                simplify_ratio=0.5,
+                smooth=True,
+            )
+
+            assert result.exists()
+
+            # Load refined mesh
+            refined = trimesh.load(result)
+            assert len(refined.faces) > 0

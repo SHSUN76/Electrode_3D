@@ -239,3 +239,154 @@ class TestDataAugmentor:
 
         with pytest.raises(ValueError, match="Image too small"):
             augmentor.create_patches(small_image, patch_size=32, num_patches=10)
+
+
+class TestAdvancedPreprocessing:
+    """Tests for new advanced preprocessing features."""
+
+    @pytest.fixture
+    def preprocessor(self):
+        """Create preprocessor instance."""
+        config = PreprocessingConfig()
+        return ImagePreprocessor(config)
+
+    @pytest.fixture
+    def sample_image(self):
+        """Create sample grayscale image with distinct regions."""
+        np.random.seed(42)
+        image = np.zeros((256, 256), dtype=np.float32)
+        # Create three distinct regions
+        image[:85, :] = 0.2 + np.random.rand(85, 256) * 0.1
+        image[85:170, :] = 0.5 + np.random.rand(85, 256) * 0.1
+        image[170:, :] = 0.8 + np.random.rand(86, 256) * 0.1
+        return image
+
+    def test_denoise_bilateral(self, preprocessor, sample_image):
+        """Test bilateral denoising."""
+        # Add noise
+        noisy = sample_image + np.random.normal(0, 0.1, sample_image.shape)
+
+        # Denoise
+        denoised = preprocessor.denoise_bilateral(noisy, sigma_spatial=3.0)
+
+        assert denoised.shape == sample_image.shape
+        # Denoised should be smoother
+        assert np.std(denoised) < np.std(noisy)
+
+    def test_denoise_method_selection(self, preprocessor, sample_image):
+        """Test denoising method selection."""
+        # Gaussian
+        gaussian = preprocessor.denoise(sample_image, sigma=1.0, method="gaussian")
+        assert gaussian.shape == sample_image.shape
+
+        # Bilateral
+        bilateral = preprocessor.denoise(sample_image, sigma=1.0, method="bilateral")
+        assert bilateral.shape == sample_image.shape
+
+    def test_segment_multiphase_improved(self, preprocessor, sample_image):
+        """Test improved multi-phase segmentation."""
+        try:
+            segmented = preprocessor.segment_multiphase_improved(
+                sample_image,
+                n_phases=3,
+                denoise_first=True,
+                morphology_closing=True,
+            )
+
+            assert segmented.shape == sample_image.shape
+            assert segmented.dtype == np.uint8
+            unique_phases = np.unique(segmented)
+            assert len(unique_phases) <= 3
+        except ImportError:
+            pytest.skip("scikit-image not available")
+
+
+class TestTIFFSequenceLoader:
+    """Tests for TIFF sequence loading."""
+
+    @pytest.fixture
+    def stack_processor(self):
+        """Create stack processor instance."""
+        config = PreprocessingConfig()
+        return StackProcessor(config)
+
+    def test_natural_sort_key(self):
+        """Test natural sorting of filenames."""
+        from preprocessing.image_processor import natural_sort_key
+
+        paths = [
+            Path("img_1.tif"),
+            Path("img_10.tif"),
+            Path("img_2.tif"),
+            Path("img_20.tif"),
+        ]
+
+        sorted_paths = sorted(paths, key=natural_sort_key)
+        expected = ["img_1.tif", "img_2.tif", "img_10.tif", "img_20.tif"]
+
+        assert [p.name for p in sorted_paths] == expected
+
+    def test_load_tiff_sequence(self, stack_processor):
+        """Test loading TIFF sequence from directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create test TIFF sequence with non-sequential numbers
+            for i in [1, 2, 10, 20]:
+                img = Image.fromarray(np.random.randint(0, 256, (64, 64), dtype=np.uint8))
+                img.save(tmpdir / f"slice_{i}.tif")
+
+            # Load with natural sorting
+            volume = stack_processor.load_tiff_sequence(tmpdir)
+
+            # Should have 4 slices
+            assert volume.shape[0] == 4
+            assert volume.shape[1:] == (64, 64)
+
+    def test_load_tiff_sequence_max_slices(self, stack_processor):
+        """Test loading limited number of slices."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create 10 slices
+            for i in range(10):
+                img = Image.fromarray(np.random.randint(0, 256, (32, 32), dtype=np.uint8))
+                img.save(tmpdir / f"slice_{i:03d}.tif")
+
+            # Load only 5
+            volume = stack_processor.load_tiff_sequence(tmpdir, max_slices=5)
+
+            assert volume.shape[0] == 5
+
+    def test_extract_training_slices(self, stack_processor):
+        """Test extracting training slices from 3D volume."""
+        volume = np.random.randint(0, 256, (20, 64, 64), dtype=np.uint8)
+
+        # Extract z-slices
+        slices_z = stack_processor.extract_training_slices(volume, axis='z', num_slices=10)
+        assert len(slices_z) == 10
+        assert slices_z[0].shape == (64, 64)
+
+        # Extract y-slices
+        slices_y = stack_processor.extract_training_slices(volume, axis='y', num_slices=5)
+        assert len(slices_y) == 5
+        assert slices_y[0].shape == (20, 64)
+
+    def test_extract_orthogonal_slices(self, stack_processor):
+        """Test extracting slices from all axes."""
+        volume = np.random.randint(0, 256, (30, 40, 50), dtype=np.uint8)
+
+        slices = stack_processor.extract_orthogonal_slices(volume, num_per_axis=5)
+
+        # Should have 5 slices per axis = 15 total
+        assert len(slices) == 15
+
+    def test_volume_to_binary(self, stack_processor):
+        """Test volume binarization."""
+        volume = np.random.randint(0, 256, (10, 32, 32), dtype=np.uint8)
+
+        binary = stack_processor.volume_to_binary(volume, method="otsu")
+
+        assert binary.shape == volume.shape
+        assert binary.dtype == np.uint8
+        assert set(np.unique(binary)) == {0, 1}

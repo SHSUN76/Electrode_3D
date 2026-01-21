@@ -225,6 +225,7 @@ class MeshExporter:
         mesh: "trimesh.Trimesh",
         path: Union[str, Path],
         scale: float = 1e-3,  # mm to m
+        format: str = "stl",
     ) -> Path:
         """
         Export mesh optimized for COMSOL import.
@@ -238,6 +239,7 @@ class MeshExporter:
             mesh: Trimesh mesh object
             path: Output file path
             scale: Scale factor (default: mm to m)
+            format: Export format ("stl" or "nastran")
 
         Returns:
             Path to exported file
@@ -259,8 +261,126 @@ class MeshExporter:
             except ImportError:
                 pass
 
-        # Export as STL (COMSOL preferred format)
-        return self.export(scaled_mesh, path, format="stl")
+        # Export in requested format
+        if format.lower() == "nastran":
+            return self.export_nastran(
+                scaled_mesh.vertices,
+                scaled_mesh.faces,
+                path
+            )
+        else:
+            return self.export(scaled_mesh, path, format="stl")
+
+    def export_nastran(
+        self,
+        vertices: np.ndarray,
+        faces: np.ndarray,
+        path: Union[str, Path],
+        title: str = "Electrode Microstructure",
+    ) -> Path:
+        """
+        Export mesh in NASTRAN format for COMSOL import.
+
+        NASTRAN format is well-supported by COMSOL and preserves
+        mesh topology better than STL for some import cases.
+
+        Args:
+            vertices: Vertex coordinates (N, 3)
+            faces: Face indices (M, 3)
+            path: Output file path
+            title: Title for NASTRAN file
+
+        Returns:
+            Path to exported file
+        """
+        path = Path(path)
+        if not path.suffix.lower() in ['.nas', '.nastran', '.bdf']:
+            path = path.with_suffix('.nas')
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(path, "w") as f:
+            # Header
+            f.write(f"$ NASTRAN mesh exported by Electrode 3D Generator\n")
+            f.write(f"$ Title: {title}\n")
+            f.write(f"$ Vertices: {len(vertices)}, Faces: {len(faces)}\n")
+            f.write("BEGIN BULK\n")
+
+            # Write GRID cards (vertices)
+            # Format: GRID, ID, CP, X, Y, Z, CD, PS, SEID
+            for i, v in enumerate(vertices, start=1):
+                # Use large field format for precision
+                f.write(f"GRID*   {i:16d}                {v[0]:16.8E}{v[1]:16.8E}\n")
+                f.write(f"*       {v[2]:16.8E}\n")
+
+            # Write CTRIA3 cards (triangular elements)
+            # Format: CTRIA3, EID, PID, G1, G2, G3
+            pid = 1  # Property ID
+            for i, face in enumerate(faces, start=1):
+                # NASTRAN uses 1-based indexing
+                g1, g2, g3 = face[0] + 1, face[1] + 1, face[2] + 1
+                f.write(f"CTRIA3  {i:8d}{pid:8d}{g1:8d}{g2:8d}{g3:8d}\n")
+
+            # Shell property (for surface mesh)
+            f.write(f"PSHELL  {pid:8d}       1      1.0       1              1\n")
+
+            # Material (placeholder)
+            f.write("MAT1           1   2.1+11             0.3     7800.\n")
+
+            f.write("ENDDATA\n")
+
+        return path
+
+    def export_gmsh(
+        self,
+        vertices: np.ndarray,
+        faces: np.ndarray,
+        path: Union[str, Path],
+    ) -> Path:
+        """
+        Export mesh in Gmsh MSH format.
+
+        Gmsh format is useful for further mesh refinement with Gmsh
+        before importing to COMSOL.
+
+        Args:
+            vertices: Vertex coordinates (N, 3)
+            faces: Face indices (M, 3)
+            path: Output file path
+
+        Returns:
+            Path to exported file
+        """
+        path = Path(path)
+        if not path.suffix.lower() in ['.msh']:
+            path = path.with_suffix('.msh')
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(path, "w") as f:
+            # Header
+            f.write("$MeshFormat\n")
+            f.write("2.2 0 8\n")
+            f.write("$EndMeshFormat\n")
+
+            # Nodes
+            f.write("$Nodes\n")
+            f.write(f"{len(vertices)}\n")
+            for i, v in enumerate(vertices, start=1):
+                f.write(f"{i} {v[0]:.10e} {v[1]:.10e} {v[2]:.10e}\n")
+            f.write("$EndNodes\n")
+
+            # Elements (triangles)
+            f.write("$Elements\n")
+            f.write(f"{len(faces)}\n")
+            for i, face in enumerate(faces, start=1):
+                # Element type 2 = 3-node triangle
+                # Format: elem-number elem-type num-tags tags... node-list
+                g1, g2, g3 = face[0] + 1, face[1] + 1, face[2] + 1
+                f.write(f"{i} 2 0 {g1} {g2} {g3}\n")
+            f.write("$EndElements\n")
+
+        return path
 
     def export_batch(
         self,
